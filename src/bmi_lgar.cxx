@@ -1089,6 +1089,16 @@ SetValue (std::string name, void *src)
   if (dest) {
     int nbytes = 0;
     nbytes = this->GetVarNbytes(name);
+    // catch negative numbers set for precipitation rate
+    if (name == "precipitation_rate") {
+      double candidate = *(double *)src;
+      if (candidate < 0.0) {
+        LOG(LogLevel::WARNING, "LASAM's precipitation rate was attempted to be set to a negative number: %f. The precipitation rate set will be changed to 0.", candidate);
+        double zero = 0.0;
+        memcpy(dest, &zero, nbytes);
+        return;
+      }
+    }
     memcpy(dest, src, nbytes);
   }
 
