@@ -61,7 +61,7 @@ public:
     this->output_var_names[13] = "groundwater_to_stream_recharge";
     this->output_var_names[14] = "mass_balance";
     this->output_var_names[15] = NWM_PONDED_DEPTH_OUT_VAR;
-    this->output_var_names[15] = "precipitation_rate_out"
+    this->output_var_names[16] = "precipitation_rate_out";
     
     /*
     this->output_var_names[13] = "cum_precipitation";
