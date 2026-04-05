@@ -904,7 +904,7 @@ GetVarLocation(std::string name)
     name.compare("actual_evapotranspiration") == 0)
     return "node";
   else if (name.compare("surface_runoff") == 0 || name.compare("giuh_runoff") == 0
-	   || name.compare("soil_storage") == 0 || name.compare(NWM_PONDED_DEPTH_OUT_VAR)) // double
+	   || name.compare("soil_storage") == 0 || name.compare(NWM_PONDED_DEPTH_OUT_VAR) == 0) // double
     return "node";
    else if (name.compare("total_discharge") == 0 || name.compare("infiltration") == 0
 	    || name.compare("percolation") == 0 || name.compare("groundwater_to_stream_recharge") == 0) // double
@@ -921,7 +921,6 @@ GetVarLocation(std::string name)
   else
     return "none";
 }
-
 
 void BmiLGAR::
 GetGridShape(const int grid, int *shape)
@@ -978,8 +977,6 @@ GetGridSize(const int grid)
     return -1;
 }
 
-
-
 void BmiLGAR::
 GetValue (std::string name, void *dest)
 {
@@ -988,9 +985,23 @@ GetValue (std::string name, void *dest)
 
   src = this->GetValuePtr(name);
   nbytes = this->GetVarNbytes(name);
+
+  if (src == NULL) {
+    std::stringstream errMsg;
+    errMsg << "GetValue: source pointer is null for variable " << name;
+    LOG(LogLevel::SEVERE, errMsg.str());
+    throw std::runtime_error(errMsg.str());
+  }
+
+  if (dest == NULL) {
+    std::stringstream errMsg;
+    errMsg << "GetValue: destination pointer is null for variable " << name;
+    LOG(LogLevel::SEVERE, errMsg.str());
+    throw std::runtime_error(errMsg.str());
+  }
+
   memcpy (dest, src, nbytes);
 }
-
 
 void *BmiLGAR::
 GetValuePtr (std::string name)
@@ -1086,7 +1097,6 @@ GetValueAtIndices (std::string name, void *dest, int *inds, int len)
   }
 }
 
-
 void BmiLGAR::
 SetValue (std::string name, void *src)
 {
@@ -1106,8 +1116,43 @@ SetValue (std::string name, void *src)
     this->state->lgar_bmi_params.timesteps = 0;
     return;
   }
+
   void * dest = NULL;
   dest = this->GetValuePtr(name);
+
+  if (src == NULL) {
+    std::stringstream errMsg;
+    errMsg << "SetValue: source pointer is null for variable " << name;
+    LOG(LogLevel::SEVERE, errMsg.str());
+    throw std::runtime_error(errMsg.str());
+  }
+
+  if (dest == NULL) {
+    std::stringstream errMsg;
+    errMsg << "SetValue: destination pointer is null for variable " << name;
+    LOG(LogLevel::SEVERE, errMsg.str());
+    throw std::runtime_error(errMsg.str());
+  }
+
+  if (name.compare("soil_temperature_profile") == 0) {
+    int n = this->state->lgar_bmi_params.num_cells_temp;
+    if (n <= 0) {
+      std::stringstream errMsg;
+      errMsg << "SetValue: invalid num_cells_temp for variable " << name << ": " << n;
+      LOG(LogLevel::SEVERE, errMsg.str());
+      throw std::runtime_error(errMsg.str());
+    }
+
+    double *temp = static_cast<double*>(src);
+    for (int i = 0; i < n; i++) {
+      if (!(temp[i] > 0.0)) {
+        std::stringstream errMsg;
+        errMsg << "SetValue: soil_temperature_profile[" << i << "] must be > 0.0 K, value=" << temp[i];
+        LOG(LogLevel::SEVERE, errMsg.str());
+        throw std::runtime_error(errMsg.str());
+      }
+    }
+  }
 
   if (dest) {
     int nbytes = 0;
