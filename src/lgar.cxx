@@ -11,7 +11,61 @@
 std::stringstream lgar_ss("");
 
 using namespace std;
+static int invalid_theta_log_count = 0;
+static const int invalid_theta_log_limit = 20;
 
+static inline void log_invalid_theta_if_needed(
+    const char* branch_name,
+    double theta,
+    double theta_new,
+    bool has_theta_new,
+    double psi_cm,
+    double next_theta,
+    bool has_next_theta,
+    double depth_cm,
+    double prior_mass,
+    bool has_prior_mass,
+    int layer_num,
+    double theta_r,
+    double theta_e
+) {
+  bool bad = (!std::isfinite(theta) ||
+              theta < theta_r - 1.0e-10 ||
+              theta > theta_e + 1.0e-10);
+
+  if (!bad)
+    return;
+
+  if (invalid_theta_log_count >= invalid_theta_log_limit)
+    return;
+
+  invalid_theta_log_count++;
+
+  std::stringstream msg;
+  msg << "INVALID theta computed"
+      << " branch=" << branch_name
+      << " theta=" << theta;
+
+  if (has_theta_new)
+    msg << " theta_new=" << theta_new;
+
+  msg << " psi_cm=" << psi_cm;
+
+  if (has_next_theta)
+    msg << " next_theta=" << next_theta;
+
+  msg << " depth_cm=" << depth_cm;
+
+  if (has_prior_mass)
+    msg << " prior_mass=" << prior_mass;
+
+  msg << " layer_num=" << layer_num
+      << " theta_r=" << theta_r
+      << " theta_e=" << theta_e
+      << " log_count=" << invalid_theta_log_count;
+
+  LOG(LogLevel::SEVERE, msg.str());
+}
 
 //#####################################################################################
 /* authors : Ahmad Jan, Fred Ogden, and Peter La Follette
@@ -185,6 +239,9 @@ extern void InitFromConfigFile(string config_file, struct model_state *state)
 {
 
   ifstream fp; //FILE *fp = fopen(config_file.c_str(),"r");
+	       
+
+  LOG(config_file, LogLevel::INFO); 
   fp.open(config_file);
   //struct wetting_front* head = state->head;
   
@@ -302,8 +359,12 @@ extern void InitFromConfigFile(string config_file, struct model_state *state)
 
       state->lgar_bmi_params.layer_soil_type = new int[vec.size()+1];
 
-      for (unsigned int layer=1; layer <= vec.size(); layer++)
-      	state->lgar_bmi_params.layer_soil_type[layer] = vec[layer-1];
+      // 1-based indexing in LASAM for layer arrays
+      state->lgar_bmi_params.layer_soil_type[0] = -1;
+
+      for (unsigned int layer=1; layer <= vec.size(); layer++) {
+        state->lgar_bmi_params.layer_soil_type[layer] = static_cast<int>(vec[layer-1]);
+      }
 
       is_layer_soil_type_set = true;
 
@@ -567,6 +628,25 @@ extern void InitFromConfigFile(string config_file, struct model_state *state)
   
   if(!is_max_valid_soil_types_set)
      state->lgar_bmi_params.num_soil_types = MAX_NUM_SOIL_TYPES;     // maximum number of valid soil types defaults to 15
+    // Temporary test behavior:
+  // clamp invalid layer_soil_type values into the valid range [1, num_soil_types]
+  for (int layer = 1; layer <= state->lgar_bmi_params.num_layers; layer++) {
+    int original_soil_type = state->lgar_bmi_params.layer_soil_type[layer];
+
+    if (original_soil_type < 1) {
+      lgar_ss << "InitFromConfigFile: clamping layer_soil_type[" << layer << "] from "
+              << original_soil_type << " to 1 for testing.\n";
+      LOG(lgar_ss.str(), LogLevel::SEVERE); lgar_ss.str("");
+      state->lgar_bmi_params.layer_soil_type[layer] = 1;
+    }
+    else if (original_soil_type > state->lgar_bmi_params.num_soil_types) {
+      lgar_ss << "InitFromConfigFile: clamping layer_soil_type[" << layer << "] from "
+              << original_soil_type << " to "
+              << state->lgar_bmi_params.num_soil_types << " for testing.\n";
+      LOG(lgar_ss.str(), LogLevel::SEVERE); lgar_ss.str("");
+      state->lgar_bmi_params.layer_soil_type[layer] = state->lgar_bmi_params.num_soil_types;
+    }
+  }
 
   if (verbosity.compare("high") == 0) {
     lgar_ss <<"Maximum number of soil types: "<<state->lgar_bmi_params.num_soil_types<<"\n";
@@ -780,7 +860,7 @@ extern void InitFromConfigFile(string config_file, struct model_state *state)
 */
 // #############################################################################
 extern void InitializeWettingFronts(int num_layers, double initial_psi_cm, int *layer_soil_type, double *cum_layer_thickness_cm,
-				    double *frozen_factor, struct wetting_front** head, struct soil_properties_ *soil_properties)
+                                    double *frozen_factor, struct wetting_front** head, struct soil_properties_ *soil_properties)
 {
   int soil;
   int front = 0;
@@ -789,34 +869,75 @@ extern void InitializeWettingFronts(int num_layers, double initial_psi_cm, int *
   double Ksat_cm_per_h;
   struct wetting_front *current;
 
-  for(int layer=1;layer<=num_layers;layer++) {
-    front++;
-
-    soil = layer_soil_type[layer];
-    theta_init = calc_theta_from_h(initial_psi_cm,soil_properties[soil].vg_alpha_per_cm,
-				   soil_properties[soil].vg_m,soil_properties[soil].vg_n,
-				   soil_properties[soil].theta_e,soil_properties[soil].theta_r);
-
-    if (verbosity.compare("high") == 0) {
-      LOG(LogLevel::DEBUG,"layer, theta, psi, alpha, m, n, theta_e, theta_r = %d, %6.6f, %6.6f, %6.6f, %6.6f, %6.6f, %6.6f, %6.6f \n",
-	     layer, theta_init, initial_psi_cm, soil_properties[soil].vg_alpha_per_cm, soil_properties[soil].vg_m,
-	     soil_properties[soil].vg_n,soil_properties[soil].theta_e,soil_properties[soil].theta_r);
-    }
-
-    // the next lines create the initial moisture profile
-    bottom_flag = true;  // all initial wetting fronts are in contact with the bottom of the layer they exist in
-    // NOTE: The listInsertFront function does lots of stuff.
-
-    current = listInsertFront(cum_layer_thickness_cm[layer],theta_init,front,layer,bottom_flag, head);
-
-    current->psi_cm = initial_psi_cm;
-    Se = calc_Se_from_theta(current->theta,soil_properties[soil].theta_e,soil_properties[soil].theta_r);
-
-    Ksat_cm_per_h = frozen_factor[layer] * soil_properties[soil].Ksat_cm_per_h;
-    current->K_cm_per_h = calc_K_from_Se(Se, Ksat_cm_per_h , soil_properties[soil].vg_m);  // cm/s
-
+  if (layer_soil_type == NULL) {
+    LOG(LogLevel::SEVERE, "InitializeWettingFronts received NULL layer_soil_type");
+    throw std::runtime_error("InitializeWettingFronts: layer_soil_type is NULL");
   }
 
+  if (cum_layer_thickness_cm == NULL) {
+    LOG(LogLevel::SEVERE, "InitializeWettingFronts received NULL cum_layer_thickness_cm");
+    throw std::runtime_error("InitializeWettingFronts: cum_layer_thickness_cm is NULL");
+  }
+
+  if (frozen_factor == NULL) {
+    LOG(LogLevel::SEVERE, "InitializeWettingFronts received NULL frozen_factor");
+    throw std::runtime_error("InitializeWettingFronts: frozen_factor is NULL");
+  }
+
+  if (soil_properties == NULL) {
+    LOG(LogLevel::SEVERE, "InitializeWettingFronts received NULL soil_properties");
+    throw std::runtime_error("InitializeWettingFronts: soil_properties is NULL");
+  }
+
+  for (int layer = 1; layer <= num_layers; layer++) {
+    front++;
+
+    // LASAM arrays in this path are 1-based.
+    soil = layer_soil_type[layer];
+
+    // Temporary test behavior:
+    // clamp invalid soil types into valid range instead of failing.
+    if (soil < 1) {
+      LOG(LogLevel::SEVERE,
+          "InitializeWettingFronts found invalid soil type index %d at layer %d. Clamping to 1 for testing.",
+          soil, layer);
+      soil = 1;
+    }
+    else if (soil > MAX_NUM_SOIL_TYPES) {
+      LOG(LogLevel::SEVERE,
+          "InitializeWettingFronts found invalid soil type index %d at layer %d. Clamping to %d for testing.",
+          soil, layer, MAX_NUM_SOIL_TYPES);
+      soil = MAX_NUM_SOIL_TYPES;
+    }
+
+    theta_init = calc_theta_from_h(initial_psi_cm, soil_properties[soil].vg_alpha_per_cm,
+                                   soil_properties[soil].vg_m, soil_properties[soil].vg_n,
+                                   soil_properties[soil].theta_e, soil_properties[soil].theta_r);
+
+    if (verbosity.compare("high") == 0) {
+      LOG(LogLevel::DEBUG,
+          "layer, theta, psi, alpha, m, n, theta_e, theta_r = %d, %6.6f, %6.6f, %6.6f, %6.6f, %6.6f, %6.6f, %6.6f \n",
+          layer, theta_init, initial_psi_cm, soil_properties[soil].vg_alpha_per_cm, soil_properties[soil].vg_m,
+          soil_properties[soil].vg_n, soil_properties[soil].theta_e, soil_properties[soil].theta_r);
+    }
+
+    bottom_flag = true;  // all initial wetting fronts are in contact with the bottom of the layer they exist in
+
+    current = listInsertFront(cum_layer_thickness_cm[layer], theta_init, front, layer, bottom_flag, head);
+
+    if (current == NULL) {
+      std::stringstream error_message;
+      error_message << "InitializeWettingFronts: listInsertFront returned NULL at layer " << layer;
+      LOG(LogLevel::SEVERE, error_message.str());
+      throw std::runtime_error(error_message.str());
+    }
+
+    current->psi_cm = initial_psi_cm;
+    Se = calc_Se_from_theta(current->theta, soil_properties[soil].theta_e, soil_properties[soil].theta_r);
+
+    Ksat_cm_per_h = frozen_factor[layer] * soil_properties[soil].Ksat_cm_per_h;
+    current->K_cm_per_h = calc_K_from_Se(Se, Ksat_cm_per_h, soil_properties[soil].vg_m);
+  }
 }
 
 // ##################################################################################
@@ -1137,8 +1258,23 @@ extern void lgar_move_wetting_fronts(double timestep_h, double *volin_cm, int wf
 	LOG(LogLevel::DEBUG,"case (deepest wetting front within layer) : layer_num (%d) != layer_num_below (%d) \n", layer_num, layer_num_below);
       }
 
-      current->theta = calc_theta_from_h(next->psi_cm, vg_a,vg_m, vg_n, theta_e, theta_r);
-      current->psi_cm = next->psi_cm;
+      current->theta = calc_theta_from_h(next->psi_cm, vg_a, vg_m, vg_n, theta_e, theta_r);
+
+log_invalid_theta_if_needed(
+    "interface_case",
+    current->theta,
+    0.0, false,
+    next->psi_cm,
+    0.0, false,
+    current->depth_cm,
+    0.0, false,
+    current->layer_num,
+    theta_r,
+    theta_e
+);
+
+current->psi_cm = next->psi_cm;
+
     }
 
     // case to check if the number of wetting fronts are equal to the number of layers, i.e., one wetting front per layer
@@ -1225,6 +1361,20 @@ extern void lgar_move_wetting_fronts(double timestep_h, double *volin_cm, int wf
       free(delta_thickness);
       current->theta = fmax(theta_r, fmin(theta_new, theta_e));
 
+
+log_invalid_theta_if_needed(
+    "deepest_layer_case",
+    current->theta,
+    theta_new, true,
+    psi_cm,
+    0.0, false,
+    current->depth_cm,
+    prior_mass, true,
+    current->layer_num,
+    theta_r,
+    theta_e
+);
+
       double Se = calc_Se_from_theta(current->theta,theta_e,theta_r);
       current->psi_cm = calc_h_from_Se(Se, vg_a, vg_m, vg_n);
 
@@ -1279,7 +1429,20 @@ extern void lgar_move_wetting_fronts(double timestep_h, double *volin_cm, int wf
         actual_ET_demand = *AET_demand_cm;
       }
       else {//This is the case where theta>theta_r, which will be almost all of the time 
-	      current->theta = fmax(theta_r, fmin(theta_e, prior_mass/current->depth_cm + next->theta));
+      	      current->theta = fmax(theta_r, fmin(theta_e, prior_mass/current->depth_cm + next->theta));
+
+log_invalid_theta_if_needed(
+    "surface_case",
+    current->theta,
+    prior_mass/current->depth_cm + next->theta, true,
+    current->psi_cm,
+    next->theta, true,
+    current->depth_cm,
+    prior_mass, true,
+    current->layer_num,
+    theta_r,
+    theta_e
+);
       }
     }
 
@@ -1368,6 +1531,18 @@ extern void lgar_move_wetting_fronts(double timestep_h, double *volin_cm, int wf
   free(delta_thickness);
 	current->theta = fmax(theta_r, fmin(theta_new, theta_e));
 
+log_invalid_theta_if_needed(
+    "within_layer_case",
+    current->theta,
+    theta_new, true,
+    psi_cm,
+    next->theta, true,
+    current->depth_cm,
+    prior_mass, true,
+    current->layer_num,
+    theta_r,
+    theta_e
+);
       }
 
       double Se = calc_Se_from_theta(current->theta,theta_e,theta_r);
@@ -1592,12 +1767,14 @@ extern void lgar_move_wetting_fronts(double timestep_h, double *volin_cm, int wf
 
   //Just a check to make sure that, when there is only 1 layer, than the existing wetting front is at the correct depth.
   //This might have been fixed with other debugging related to scenarios with just 1 layer where the wetting front is completely satruated. Not sure this is necessary.
-  if (listLength(*head)==1) {
-    if (current->depth_cm != cum_layer_thickness_cm[1]) {
-      current->depth_cm = cum_layer_thickness_cm[1];
-    }
+  
+if (listLength(*head) == 1) {
+  struct wetting_front *only_front = *head;
+  if (only_front != NULL &&
+      only_front->depth_cm != cum_layer_thickness_cm[1]) {
+    only_front->depth_cm = cum_layer_thickness_cm[1];
   }
-
+}
 
 }
 
@@ -1740,8 +1917,8 @@ extern void lgar_wetting_fronts_cross_layer_boundary(int num_layers,
     next_to_next = current->next->next;
 
     if (current->depth_cm > cum_layer_thickness_cm[layer_num] && (next->depth_cm == cum_layer_thickness_cm[layer_num])
-	&& (layer_num!=num_layers) ) {
-      
+    && (layer_num != num_layers) ) {
+
       double current_theta = fmin(theta_e, current->theta);
       double overshot_depth = current->depth_cm - next->depth_cm;
       int soil_num_next = soil_type[layer_num+1];
@@ -1751,27 +1928,42 @@ extern void lgar_wetting_fronts_cross_layer_boundary(int num_layers,
       double next_vg_a      = soil_properties[soil_num_next].vg_alpha_per_cm;
       double next_vg_m      = soil_properties[soil_num_next].vg_m;
       double next_vg_n      = soil_properties[soil_num_next].vg_n;
-      //double next_Ksat_cm_per_h  = soil_properties[soil_num_next].Ksat_cm_per_h * frozen_factor[current->layer_num]; 
+      //double next_Ksat_cm_per_h  = soil_properties[soil_num_next].Ksat_cm_per_h * frozen_factor[current->layer_num];
 
-      double Se = calc_Se_from_theta(current->theta,theta_e, theta_r);
+      double Se = calc_Se_from_theta(current->theta, theta_e, theta_r);
       current->psi_cm = calc_h_from_Se(Se, vg_a, vg_m, vg_n);
 
       current->K_cm_per_h = calc_K_from_Se(Se, Ksat_cm_per_h, vg_m);
-      
-      // current psi with van Gunechten properties of the next layer to get new theta
+
+      // current psi with van Genuchten properties of the next layer to get new theta
       double theta_new = calc_theta_from_h(current->psi_cm, next_vg_a, next_vg_m, next_vg_n, next_theta_e, next_theta_r);
 
-      double mbal_correction = overshot_depth * (current_theta - next->theta);
-      double mbal_Z_correction = mbal_correction / (theta_new - next_to_next->theta); // this is the new wetting front depth
-      if (isinf(mbal_Z_correction)){//in some rare cases, due to (very) different shapes of soil water rentention curves in adjacent soil layers near saturation, the WF that crossed a layer bdy can yield a theta value identical to the one below it, resulting in division by 0 and an infinite WF depth. 
-        mbal_Z_correction = cum_layer_thickness_cm[layer_num+1]/(1e3);
+      double theta_below = next->theta;
+      if (next_to_next != NULL) {
+        theta_below = next_to_next->theta;
       }
 
-      double depth_new = cum_layer_thickness_cm[layer_num] + mbal_Z_correction; // this is the new wetting front absolute depth
+      double denom = theta_new - theta_below;
+      double mbal_correction = overshot_depth * (current_theta - next->theta);
+      double mbal_Z_correction;
+
+      if (!std::isfinite(denom) || fabs(denom) < 1.0e-12) {
+        // Avoid division by zero / undefined behavior when there is no next_to_next
+        // or when the two theta values are nearly identical.
+        mbal_Z_correction = cum_layer_thickness_cm[layer_num+1] / (1e3);
+      }
+      else {
+        mbal_Z_correction = mbal_correction / denom;
+        if (!std::isfinite(mbal_Z_correction)) {
+          mbal_Z_correction = cum_layer_thickness_cm[layer_num+1] / (1e3);
+        }
+      }
+
+      double depth_new = cum_layer_thickness_cm[layer_num] + mbal_Z_correction;
 
       current->depth_cm = cum_layer_thickness_cm[layer_num];
-      
-      next->theta = theta_new;
+
+      next->theta = fmax(next_theta_r, fmin(theta_new, next_theta_e));
       next->psi_cm = current->psi_cm;
       next->depth_cm = depth_new;
       next->layer_num = layer_num + 1;
@@ -1779,9 +1971,21 @@ extern void lgar_wetting_fronts_cross_layer_boundary(int num_layers,
       current->dzdt_cm_per_h = 0;
       current->to_bottom = TRUE;
       next->to_bottom = FALSE;
-      
+
+      log_invalid_theta_if_needed(
+          "cross_layer_boundary_next_theta",
+          next->theta,
+          theta_new, true,
+          next->psi_cm,
+          theta_below, true,
+          next->depth_cm,
+          mbal_correction, true,
+          next->layer_num,
+          next_theta_r,
+          next_theta_e
+      );
     }
-    
+
     if (verbosity.compare("high") == 0) {
       LOG(LogLevel::DEBUG,"States after wetting fronts cross layer boundary...\n");
       listPrint(*head);
@@ -2722,7 +2926,32 @@ extern double lgar_theta_mass_balance(int layer_num, int soil_num, double psi_cm
     //Just setting the AET to 0 in these cases closes mass balance; another option would be to augment the recharge. Error is very rare and seems to happen once every 100k parameter sets or so, using yearlong simulations.
     *AET_demand_cm = 0.0;
   }
-  
+
+  // --- FINAL SAFETY CHECK (minimal, safe, no logic change) ---
+  double theta_r = soil_properties[soil_num].theta_r;
+  double theta_e = soil_properties[soil_num].theta_e;
+
+  if (!std::isfinite(theta)) {
+    LOG(ewts::LogLevel::SEVERE,
+        "theta_mass_balance: non-finite theta=%e layer_num=%d soil_num=%d, forcing theta_r=%e",
+        theta, layer_num, soil_num, theta_r);
+    theta = theta_r;
+  }
+
+  if (theta > theta_e) {
+    LOG(ewts::LogLevel::SEVERE,
+        "theta_mass_balance: theta=%e > theta_e=%e layer_num=%d soil_num=%d, clamping",
+        theta, theta_e, layer_num, soil_num);
+    theta = theta_e;
+  }
+
+  if (theta < theta_r) {
+    LOG(ewts::LogLevel::SEVERE,
+        "theta_mass_balance: theta=%e < theta_r=%e layer_num=%d soil_num=%d, clamping",
+        theta, theta_r, layer_num, soil_num);
+    theta = theta_r;
+  }
+
   return theta;
 
 }

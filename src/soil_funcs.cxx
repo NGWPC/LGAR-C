@@ -147,7 +147,19 @@ extern double calc_Geff(bool use_closed_form_G, double theta1, double theta2, do
 /**************************************/
 double calc_theta_from_h(double h,double alpha, double m, double n, double theta_e, double theta_r)
 {
-  return(1.0/(pow(1.0+pow(alpha*h,n),m))*(theta_e-theta_r)+theta_r);
+  // return(1.0/(pow(1.0+pow(alpha*h,n),m))*(theta_e-theta_r)+theta_r);
+
+  if (!std::isfinite(h)) {
+    return theta_r; // safest fallback
+  }
+
+  double val = 1.0/(pow(1.0+pow(alpha*h,n),m))*(theta_e-theta_r)+theta_r;
+
+  if (!std::isfinite(val)) {
+    return theta_r;
+  }
+
+  return val;
 }
 
 /***********************************/
@@ -170,9 +182,23 @@ double calc_K_from_Se(double Se, double Ksat, double m)
 /***********************************/
 /* function to calculate h from Se */
 /***********************************/
-double calc_h_from_Se(double Se, double alpha, double m, double n)
+double calc_h_from_Se_old(double Se, double alpha, double m, double n)
 {
   return(1.0/alpha*pow(pow(Se,-1.0/m)-1.0,1.0/n));
+}
+
+double calc_h_from_Se(double Se, double alpha, double m, double n)
+{
+  // Prevent invalid values
+  if (!std::isfinite(Se)) {
+    Se = 1e-6;
+  }
+
+  // Clamp to valid physical range
+  if (Se <= 0.0) Se = 1e-6;
+  if (Se >= 1.0) Se = 1.0 - 1e-6;
+
+  return (1.0/alpha * pow(pow(Se, -1.0/m) - 1.0, 1.0/n));
 }
 
 /***************************************/
@@ -180,5 +206,13 @@ double calc_h_from_Se(double Se, double alpha, double m, double n)
 /***************************************/
 double calc_Se_from_theta(double theta,double e,double r)
 {
-  return((theta-r)/(e-r));
+  //return((theta-r)/(e-r));
+  double Se = (theta - r) / (e - r);
+
+// Clamp to physical range
+if (!std::isfinite(Se)) Se = 1e-6;
+if (Se < 0.0) Se = 0.0;
+if (Se > 1.0) Se = 1.0;
+
+return Se;
 }
