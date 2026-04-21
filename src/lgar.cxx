@@ -790,18 +790,22 @@ extern void InitializeWettingFronts(int num_layers, double initial_psi_cm, int *
   struct wetting_front *current;
 
   if (layer_soil_type == NULL) {
+    LOG(LogLevel::FATAL, "InitializeWettingFronts: layer_soil_type is NULL");
     throw std::runtime_error("InitializeWettingFronts: layer_soil_type is NULL");
   }
 
   if (cum_layer_thickness_cm == NULL) {
+    LOG(LogLevel::FATAL, "InitializeWettingFronts: cum_layer_thickness_cm is NULL");
     throw std::runtime_error("InitializeWettingFronts: cum_layer_thickness_cm is NULL");
   }
 
   if (frozen_factor == NULL) {
+    LOG(LogLevel::FATAL, "InitializeWettingFronts: frozen_factor is NULL");
     throw std::runtime_error("InitializeWettingFronts: frozen_factor is NULL");
   }
 
   if (soil_properties == NULL) {
+    LOG(LogLevel::FATAL, "InitializeWettingFronts: soil_properties is NULL");
     throw std::runtime_error("InitializeWettingFronts: soil_properties is NULL");
   }
 
@@ -815,7 +819,7 @@ extern void InitializeWettingFronts(int num_layers, double initial_psi_cm, int *
       error_message << "InitializeWettingFronts found invalid soil type index " << soil
                     << " at layer " << layer
                     << ". Valid range is [1," << MAX_NUM_SOIL_TYPES << "].";
-      LOG(LogLevel::SEVERE, error_message.str());
+      LOG(LogLevel::FATAL, error_message.str());
       throw std::runtime_error(error_message.str());
     }
 
