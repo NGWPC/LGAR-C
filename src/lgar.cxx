@@ -842,7 +842,7 @@ extern void InitializeWettingFronts(int num_layers, double initial_psi_cm, int *
     if (current == NULL) {
       std::stringstream error_message;
       error_message << "InitializeWettingFronts: listInsertFront returned NULL at layer " << layer;
-      LOG(LogLevel::SEVERE, error_message.str());
+      LOG(LogLevel::FATAL, error_message.str());
       throw std::runtime_error(error_message.str());
     }
 
