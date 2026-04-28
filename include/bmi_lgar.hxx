@@ -175,6 +175,8 @@ private:
     double volQ_gw_timestep_m;
     double volPET_timestep_m;
     double mass_balance_m;
+    double volQ_gw_timestep_m3_per_s;
+    double catchment_area_m2;
   };
 
   struct bmi_unit_conversion bmi_unit_conv;
