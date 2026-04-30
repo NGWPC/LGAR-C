@@ -147,7 +147,7 @@ private:
   void realloc_soil();
   struct model_state* state;
   static const int input_var_name_count  = 3;
-  static const int output_var_name_count = 17;
+  static const int output_var_name_count = 18;
   static const int calib_var_name_count  = 7;
   
   std::string input_var_names[input_var_name_count];

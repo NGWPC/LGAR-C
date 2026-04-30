@@ -919,7 +919,8 @@ GetVarLocation(std::string name)
 	   || name.compare("soil_storage") == 0 || name.compare(NWM_PONDED_DEPTH_OUT_VAR)) // double
     return "node";
    else if (name.compare("total_discharge") == 0 || name.compare("infiltration") == 0
-	    || name.compare("percolation") == 0 || name.compare("groundwater_to_stream_recharge") == 0) // double
+	    || name.compare("percolation") == 0 || name.compare("groundwater_to_stream_recharge") == 0
+            || name.compare("groundwater_to_stream_recharge_m3_per_s") == 0) //double
     return "node";
   else if (name.compare("soil_moisture_wetting_fronts") == 0) // array of doubles
     return "node";
