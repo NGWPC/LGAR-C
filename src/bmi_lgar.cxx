@@ -876,7 +876,7 @@ GetVarUnits(std::string name)
   else if (name.compare("total_discharge") == 0 || name.compare("infiltration") == 0
 	   || name.compare("percolation") == 0) // double
     return "m";
-  else if (name.compare("groundwater_to_stream_recharge") == 0)
+  else if (name.compare("mass_balance") == 0 || name.compare("groundwater_to_stream_recharge") == 0)
     return "m";
   else if (name.compare("groundwater_to_stream_recharge_m3_per_s") == 0)
     return "m3 s-1";
