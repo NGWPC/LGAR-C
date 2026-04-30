@@ -786,6 +786,7 @@ GetVarGrid(std::string name)
     || name.compare("infiltration") == 0
 	  || name.compare("percolation") == 0
     || name.compare("groundwater_to_stream_recharge") == 0
+    || name.compare("groundwater_to_stream_recharge_m3_per_s") == 0
     || name.compare("mass_balance") == 0
     || name.compare(NWM_PONDED_DEPTH_OUT_VAR) == 0
     || name.compare("reset_time") == 0
@@ -876,6 +877,8 @@ GetVarUnits(std::string name)
 	   || name.compare("percolation") == 0) // double
     return "m";
   else if (name.compare("groundwater_to_stream_recharge") == 0)
+    return "m";
+  else if (name.compare("groundwater_to_stream_recharge_m3_per_s") == 0)
     return "m3 s-1";
   else if (name.compare("mass_balance") == 0)
     return "m";
@@ -1029,6 +1032,8 @@ GetValuePtr (std::string name)
   else if (name.compare("percolation") == 0)
     return (void*)(&bmi_unit_conv.volrech_timestep_m);
   else if (name.compare("groundwater_to_stream_recharge") == 0)
+    return (void*)(&bmi_unit_conv.volQ_gw_timestep_m);
+  else if (name.compare("groundwater_to_stream_recharge_m3_per_s") == 0)
     return (void*)(&bmi_unit_conv.volQ_gw_timestep_m3_per_s);
   else if (name.compare("mass_balance") == 0)
     return (void*)(&bmi_unit_conv.mass_balance_m);
