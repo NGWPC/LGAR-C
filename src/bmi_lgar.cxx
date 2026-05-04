@@ -69,7 +69,7 @@ Initialize (std::string config_file)
   }
 
   bmi_unit_conv.volQ_gw_timestep_m3_per_s = 0.0;
-  bmi_unit_conv.catchment_area_m2 = 1.0;
+  bmi_unit_conv.catchment_area_m2 = 0.0;
 
 }
 
@@ -607,9 +607,15 @@ Update()
   bmi_unit_conv.volrunoff_timestep_m  = volrunoff_timestep_cm * state->units.cm_to_m;
   bmi_unit_conv.volQ_timestep_m       = volQ_timestep_cm * state->units.cm_to_m;
   bmi_unit_conv.volQ_gw_timestep_m    = volQ_gw_timestep_cm * state->units.cm_to_m;
-  bmi_unit_conv.volQ_gw_timestep_m3_per_s =
-    (bmi_unit_conv.volQ_gw_timestep_m * bmi_unit_conv.catchment_area_m2) /
-    this->GetTimeStep();
+  if (bmi_unit_conv.catchment_area_m2 > 0.0 && this->GetTimeStep() > 0.0) {
+    bmi_unit_conv.volQ_gw_timestep_m3_per_s =
+      (bmi_unit_conv.volQ_gw_timestep_m * bmi_unit_conv.catchment_area_m2) /
+      this->GetTimeStep();
+  }
+  else {
+    bmi_unit_conv.volQ_gw_timestep_m3_per_s = 0.0;
+  }
+
   bmi_unit_conv.volPET_timestep_m     = PET_timestep_cm * state->units.cm_to_m;
   bmi_unit_conv.volrunoff_giuh_timestep_m = volrunoff_giuh_timestep_cm * state->units.cm_to_m;
   bmi_unit_conv.volrunoff_giuh_ponded_m = volrunoff_giuh_ponded_cm * state->units.cm_to_m;
