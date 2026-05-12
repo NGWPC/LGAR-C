@@ -360,7 +360,7 @@ extern void InitFromConfigFile(string config_file, struct model_state *state)
 
       continue;
     }
-    else if (param_key == "max_valid_soil_types") {
+    else if (param_key == "max_soil_types") {
       state->lgar_bmi_params.num_soil_types = std::min(stoi(param_value), MAX_NUM_SOIL_TYPES);
       is_max_valid_soil_types_set = true;
       continue;
