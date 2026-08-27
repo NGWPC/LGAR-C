@@ -1443,6 +1443,9 @@ serialize(Archive& ar, const unsigned int version) {
   // may be set in adapative timesteps
   ar & state->lgar_bmi_params.timestep_h;
 
+  // update surficial wetting front
+  ar & state->lgar_bmi_params.precip_previous_timestep_cm;
+
   // how much time has passed since instantiation
   ar & state->lgar_bmi_params.time_s;
   ar & state->lgar_bmi_params.timesteps;
