@@ -1497,10 +1497,15 @@ serialize(Archive& ar, const unsigned int version) {
 void BmiLGAR::new_serialized() {
   LOG(LogLevel::DEBUG, "Saving LASAM state");
   // resize with reserved space for storing size
-  this->m_serialized.resize(sizeof(uint64_t));
-  boost::archive::binary_oarchive archive(this->m_serialized);
+  this->m_serialized.clear();
+  OStreamType stream(this->m_serialized);
+  // make room for the size header
+  for (int i = 0; i < sizeof(uint64_t); ++i)
+    stream << '\0';
+  boost::archive::binary_oarchive archive(stream);
   try {
     archive << (*this);
+    stream.flush();
     this->m_serialized_length = this->m_serialized.size();
     // get serialized size without header and copy size to the beginning of the buffer
     uint64_t serialized_size = this->m_serialized_length - sizeof(uint64_t);
