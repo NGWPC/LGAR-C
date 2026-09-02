@@ -1494,17 +1494,27 @@ serialize(Archive& ar, const unsigned int version) {
   }
 }
 
+namespace {
+  // dynamicly sized serialized data, so give a big buffer just in case
+  using HeaderType = uint64_t;
+}
+
 void BmiLGAR::new_serialized() {
   LOG(LogLevel::DEBUG, "Saving LASAM state");
   // resize with reserved space for storing size
-  this->m_serialized.resize(sizeof(uint64_t));
-  boost::archive::binary_oarchive archive(this->m_serialized);
+  this->m_serialized.clear();
+  OStreamType stream(this->m_serialized);
+  // make room for the size header
+  HeaderType header;
+  stream.write(reinterpret_cast<const char*>(&header), sizeof(HeaderType));
+  boost::archive::binary_oarchive archive(stream);
   try {
     archive << (*this);
+    stream.flush();
     this->m_serialized_length = this->m_serialized.size();
     // get serialized size without header and copy size to the beginning of the buffer
-    uint64_t serialized_size = this->m_serialized_length - sizeof(uint64_t);
-    memcpy(this->m_serialized.data(), &serialized_size, sizeof(uint64_t));
+    HeaderType serialized_size = this->m_serialized_length - sizeof(HeaderType);
+    memcpy(this->m_serialized.data(), &serialized_size, sizeof(HeaderType));
   } catch (const std::exception &e) {
     LOG(LogLevel::SEVERE, "Serializing LASAM encountered an error: %s", e.what());
     this->free_serialized();
@@ -1515,10 +1525,10 @@ void BmiLGAR::new_serialized() {
 void BmiLGAR::load_serialized(char* data) {
   LOG(LogLevel::DEBUG, "Loading LASAM state");
   // copy size from the start of data
-  uint64_t size;
-  memcpy(&size, data, sizeof(uint64_t));
+  HeaderType size;
+  memcpy(&size, data, sizeof(HeaderType));
   // create stream from everything past the size header
-  membuf stream(data + sizeof(uint64_t), size);
+  membuf stream(data + sizeof(HeaderType), size);
   boost::archive::binary_iarchive archive(stream);
   try {
     archive >> (*this);
