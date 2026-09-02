@@ -158,7 +158,7 @@ private:
   double *giuh_ordinates;
   double *giuh_runoff_queue;
 
-  vecbuf<char> m_serialized;
+  vecbuf m_serialized;
   uint64_t m_serialized_length; // needs a stable anchor for GetValuePtr
 
   // unit conversion
